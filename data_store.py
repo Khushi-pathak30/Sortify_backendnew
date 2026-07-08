@@ -176,7 +176,7 @@ class Store:
 
         self.live = self._make_live_reading()
 
-        if random.random() < 0.35:
+        if random.random() < 0.85:
             epoch_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
             waste_type = random.choice(WASTE_TYPES)
             record = {
