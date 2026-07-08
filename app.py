@@ -208,6 +208,78 @@ def stream_live():
 
 
 # ---------------------------------------------------------------------------
+# Frontend Compatibility Endpoints (sortifyApi Client)
+# ---------------------------------------------------------------------------
+@app.route("/api/live/stream")
+def sse_live_stream():
+    def event_stream():
+        last_id = None
+        while True:
+            if store.history and store.history[0]["id"] != last_id:
+                last_id = store.history[0]["id"]
+                payload = json.dumps(store.history[0])
+                yield f"data: {payload}\n\n"
+            eventlet.sleep(0.5)
+    return Response(event_stream(), mimetype="text/event-stream", headers={
+        "Cache-Control": "no-cache",
+        "X-Accel-Buffering": "no",
+        "Access-Control-Allow-Origin": "*",
+    })
+
+@app.route("/api/live/events")
+def api_live_events():
+    try:
+        limit = min(int(request.args.get("limit", 20)), 100)
+    except ValueError:
+        limit = 20
+    items = store.history[:limit]
+    return jsonify({
+        "count": len(items),
+        "generatedAt": int(time.time() * 1000),
+        "data": items
+    })
+
+@app.route("/api/live/telemetry")
+def api_live_telemetry():
+    return jsonify(store.live)
+
+@app.route("/api/live/summary")
+def api_live_summary():
+    db_sum = store.dashboard_summary()
+    last_pred = None
+    if store.history:
+        last_pred = {
+            "waste": store.history[0]["waste"],
+            "confidence": store.history[0]["confidence"],
+            "inferenceMs": store.history[0]["inferenceMs"],
+            "frameId": store.history[0]["frameId"]
+        }
+    return jsonify({
+        **db_sum,
+        "streaming": store.device_status["aws"] == "Connected",
+        "connectedDevices": 1 if store.device_status["esp32"] == "Online" else 0,
+        "eventsPerMinute": 12,
+        "lastPrediction": last_pred,
+        "avgProcessingMs": store.live["avgProcessingMs"],
+        "modelVersion": "v2.3.1"
+    })
+
+@app.route("/api/live/camera/<cameraId>")
+def api_live_camera(cameraId):
+    return jsonify({
+        "cameraId": cameraId,
+        "resolution": "1920x1080",
+        "fps": 30,
+        "latencyMs": store.live["avgProcessingMs"],
+        "frameId": store.history[0]["frameId"] if store.history else 1000,
+        "timestamp": iso_now(),
+        "streamUrl": "",
+        "model": "YOLOv8n",
+        "detections": []
+    })
+
+
+# ---------------------------------------------------------------------------
 # Socket.IO real-time events
 # ---------------------------------------------------------------------------
 def background_broadcaster():
@@ -219,10 +291,10 @@ def background_broadcaster():
         socketio.emit("dashboard_update", store.dashboard_summary())
         if new_record:
             socketio.emit("waste_event", new_record)
-            if new_record["status"] == "Rejected":
+            if new_record.get("status") == "Rejected":
                 socketio.emit("alert", {
                     "level": "warning",
-                    "message": f"Item at {new_record['time']} was rejected during sorting.",
+                    "message": f"Item at {new_record['timestamp']} was rejected during sorting.",
                     "timestamp": iso_now(),
                 })
 
@@ -237,6 +309,7 @@ def on_connect():
     socketio.emit("device_status", store.device_status, to=request.sid)
     if not _broadcast_started:
         _broadcast_started = True
+        store.start_mqtt_client(socketio)
         socketio.start_background_task(background_broadcaster)
 
 
