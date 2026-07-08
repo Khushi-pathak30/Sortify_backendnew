@@ -302,6 +302,15 @@ def background_broadcaster():
 _broadcast_started = False
 
 
+@app.before_request
+def start_background_broadcaster_if_needed():
+    global _broadcast_started
+    if not _broadcast_started:
+        _broadcast_started = True
+        store.start_mqtt_client(socketio)
+        socketio.start_background_task(background_broadcaster)
+
+
 @socketio.on("connect")
 def on_connect():
     global _broadcast_started
