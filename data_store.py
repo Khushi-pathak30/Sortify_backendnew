@@ -17,7 +17,8 @@ import paho.mqtt.client as mqtt
 
 WASTE_TYPES = ["Plastic", "Paper", "Metal", "Organic", "Glass", "E-Waste", "Cardboard"]
 
-random.seed(42)  # reproducible demo data
+# Non-static random seeding for unique values across boots
+random.seed(time.time())
 
 
 def iso_now():
