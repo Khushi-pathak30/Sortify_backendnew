@@ -237,6 +237,19 @@ class Store:
         total = round(metal_kg + wet_kg + plastic_kg + paper_kg + unidentified_kg, 1)
         avg_moisture = 35.5
 
+        # Fetch latest image URL from S3 API if configured
+        latest_image_url = ""
+        s3_image_api = os.environ.get("S3_IMAGE_API_URL")
+        if s3_image_api:
+            try:
+                import requests
+                # 1.5 second timeout to keep the dashboard endpoint fast
+                res = requests.get(s3_image_api, timeout=1.5)
+                if res.status_code == 200:
+                    latest_image_url = res.json().get("url", "")
+            except Exception as e:
+                print(f"S3 Image API Error: Failed to fetch image: {e}")
+
         return {
             "totalWaste": total,
             "metalWaste": metal_kg,
@@ -248,6 +261,7 @@ class Store:
             "systemStatus": "Healthy",
             "awsStatus": self.device_status["aws"],
             "esp32Status": self.device_status["esp32"],
+            "latestImageUrl": latest_image_url,
         }
 
     def analytics(self):
@@ -377,9 +391,58 @@ class Store:
             except Exception as e:
                 print(f"AWS IoT Core: Failed to start MQTT client: {e}")
                 self.device_status["aws"] = "Disconnected"
-        else:
-            print("AWS IoT Core: Cert files not found. Running in simulated telemetry mode.")
-            self.device_status["aws"] = "Disconnected"
+    def update_from_http_post(self, data, socketio=None):
+        """Update live sensor state from HTTP POST payload sent by AWS Lambda."""
+        # 1. Merge incoming live values with existing values. Fallback to existing if key is missing.
+        if "metal" in data:
+            self.live["metalDetected"] = bool(data["metal"])
+        
+        # irActive represents detection of dry items (plastic, glass)
+        if "plastic" in data or "glass" in data:
+            self.live["irActive"] = bool(data.get("plastic", 0)) or bool(data.get("glass", 0))
+            
+        self.live["timestamp"] = int(datetime.now(timezone.utc).timestamp() * 1000)
+        self.device_status["esp32"] = "Online"
+
+        # 2. Log classification events in history if sensor is active (value == 1)
+        # Map active indicator to appropriate waste classification label
+        is_event = any(data.get(k) == 1 for k in ["metal", "plastic", "glass", "carbon"])
+        record = None
+        if is_event:
+            if data.get("metal") == 1:
+                waste_type = "Metal"
+            elif data.get("organic") == 1 or data.get("carbon") == 1:
+                waste_type = "Organic"
+            elif data.get("plastic") == 1:
+                waste_type = "Plastic"
+            elif data.get("glass") == 1:
+                waste_type = "Glass"
+            else:
+                waste_type = "Unidentified"
+
+            epoch_ms = self.live["timestamp"]
+            record = {
+                "id": f"EVT-{epoch_ms}-lambda",
+                "timestamp": epoch_ms,
+                "device": self.live["device"],
+                "bin": f"BIN-{random.randint(1, 12):04d}",
+                "area": "Sector A - Conveyor",
+                "waste": waste_type,
+                "confidence": round(random.uniform(0.85, 0.99), 2),
+                "weightKg": round(random.uniform(0.1, 1.2), 2),
+                "inferenceMs": self.live["avgProcessingMs"],
+                "frameId": random.randint(30000, 40000)
+            }
+            self.history.insert(0, record)
+            if socketio:
+                socketio.emit("waste_event", record)
+
+        if socketio:
+            socketio.emit("sensor_update", self.live)
+            socketio.emit("dashboard_update", self.dashboard_summary())
+            
+        return record
 
 
 store = Store()
+

@@ -77,6 +77,27 @@ def sensors_live():
 
 
 # ---------------------------------------------------------------------------
+# HTTP POST endpoint for AWS Lambda telemetry forwarding
+# ---------------------------------------------------------------------------
+@app.route(f"{API}/sensors/update", methods=["POST"])
+def sensors_update():
+    # Verify API Key if set in environment (optional security)
+    api_key = request.headers.get("X-API-Key")
+    expected_key = os.environ.get("LAMBDA_API_KEY")
+    if expected_key and api_key != expected_key:
+        return error_response("UNAUTHORIZED", "Invalid API Key.", 401)
+
+    body = request.get_json(silent=True) or {}
+    record = store.update_from_http_post(body, socketio)
+    return jsonify({
+        "success": True,
+        "message": "Sensor data received and processed.",
+        "event_logged": record is not None,
+        "record": record
+    })
+
+
+# ---------------------------------------------------------------------------
 # Waste history (paginated)
 # ---------------------------------------------------------------------------
 @app.route(f"{API}/waste/history")
