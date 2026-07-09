@@ -198,19 +198,25 @@ class Store:
     def dashboard_summary(self):
         metal_count = sum(1 for r in self.history if r["waste"] == "Metal")
         wet_count = sum(1 for r in self.history if r["waste"] == "Organic")
-        dry_count = sum(1 for r in self.history if r["waste"] in ["Plastic", "Paper", "Glass", "E-Waste", "Cardboard"])
+        plastic_count = sum(1 for r in self.history if r["waste"] == "Plastic")
+        paper_count = sum(1 for r in self.history if r["waste"] == "Paper")
+        unidentified_count = sum(1 for r in self.history if r["waste"] not in ["Metal", "Organic", "Plastic", "Paper"])
 
         metal_kg = round(metal_count * 0.9, 1) or 32
         wet_kg = round(wet_count * 1.1, 1) or 61
-        dry_kg = round(dry_count * 0.85, 1) or 52
-        total = round(metal_kg + wet_kg + dry_kg, 1)
+        plastic_kg = round(plastic_count * 0.75, 1) or 25
+        paper_kg = round(paper_count * 0.5, 1) or 18
+        unidentified_kg = round(unidentified_count * 0.6, 1) or 12
+        total = round(metal_kg + wet_kg + plastic_kg + paper_kg + unidentified_kg, 1)
         avg_moisture = 35.5
 
         return {
             "totalWaste": total,
             "metalWaste": metal_kg,
             "wetWaste": wet_kg,
-            "dryWaste": dry_kg,
+            "plasticWaste": plastic_kg,
+            "paperWaste": paper_kg,
+            "unidentifiedWaste": unidentified_kg,
             "avgMoisture": avg_moisture,
             "systemStatus": "Healthy",
             "awsStatus": self.device_status["aws"],
