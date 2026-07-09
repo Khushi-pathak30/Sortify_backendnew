@@ -21,6 +21,33 @@ WASTE_TYPES = ["Plastic", "Paper", "Metal", "Organic", "Glass", "E-Waste", "Card
 random.seed(time.time())
 
 
+def format_pem(pem_str):
+    if not pem_str:
+        return ""
+    pem_str = pem_str.strip().replace("\\n", "\n")
+    
+    if "-----BEGIN" in pem_str:
+        header_types = ["RSA PRIVATE KEY", "PRIVATE KEY", "CERTIFICATE"]
+        selected_type = "CERTIFICATE"
+        for t in header_types:
+            if t in pem_str:
+                selected_type = t
+                break
+        
+        begin_tag = f"-----BEGIN {selected_type}-----"
+        end_tag = f"-----END {selected_type}-----"
+        
+        # Extract body and remove all whitespace/spaces
+        body = pem_str.replace(begin_tag, "").replace(end_tag, "")
+        body = "".join(body.split())
+        
+        # Re-wrap body to 64-char lines
+        wrapped_body = "\n".join(body[i:i+64] for i in range(0, len(body), 64))
+        return f"{begin_tag}\n{wrapped_body}\n{end_tag}\n"
+        
+    return pem_str
+
+
 def iso_now():
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
@@ -304,13 +331,13 @@ class Store:
 
         if AWS_IOT_CA_CERT:
             with open(ca_path, "w") as f:
-                f.write(AWS_IOT_CA_CERT)
+                f.write(format_pem(AWS_IOT_CA_CERT))
         if AWS_IOT_CLIENT_CERT:
             with open(cert_path, "w") as f:
-                f.write(AWS_IOT_CLIENT_CERT)
+                f.write(format_pem(AWS_IOT_CLIENT_CERT))
         if AWS_IOT_CLIENT_KEY:
             with open(key_path, "w") as f:
-                f.write(AWS_IOT_CLIENT_KEY)
+                f.write(format_pem(AWS_IOT_CLIENT_KEY))
 
         if os.path.exists(ca_path) and os.path.exists(cert_path) and os.path.exists(key_path):
             try:
