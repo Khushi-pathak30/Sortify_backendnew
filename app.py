@@ -4,6 +4,7 @@ eventlet.monkey_patch()
 import os
 import json
 import time
+import requests
 import threading
 from flask import Flask, request, jsonify, Response
 from flask_cors import CORS
@@ -226,6 +227,22 @@ def stream_live():
         "Cache-Control": "no-cache",
         "X-Accel-Buffering": "no",
     })
+
+
+# ---------------------------------------------------------------------------
+# S3 Latest Image Endpoint
+# ---------------------------------------------------------------------------
+AWS_API = "https://v0h6p4tfkb.execute-api.us-east-1.amazonaws.com/latestimage"
+
+@app.route("/api/latestimage")
+def latest_image():
+    try:
+        response = requests.get(AWS_API, timeout=3.0)
+        if response.status_code == 200:
+            return jsonify(response.json())
+    except Exception as e:
+        print(f"Error fetching latest image: {e}")
+    return jsonify({"error": "Unable to fetch image"})
 
 
 # ---------------------------------------------------------------------------
