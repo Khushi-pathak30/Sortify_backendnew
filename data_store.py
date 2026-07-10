@@ -246,7 +246,21 @@ class Store:
                 # 1.5 second timeout to keep the dashboard endpoint fast
                 res = requests.get(s3_image_api, timeout=1.5)
                 if res.status_code == 200:
-                    latest_image_url = res.json().get("url", "")
+                    try:
+                        data = res.json()
+                        if isinstance(data, dict):
+                            # Check multiple common key shapes for URL
+                            for key in ["url", "imageUrl", "image_url", "image", "latest", "uri", "presigned_url", "presignedUrl"]:
+                                if key in data and data[key]:
+                                    latest_image_url = str(data[key])
+                                    break
+                        elif isinstance(data, str):
+                            latest_image_url = data
+                    except (ValueError, TypeError):
+                        # Response is not valid JSON, treat it as a raw URL string
+                        text = res.text.strip()
+                        if text.startswith("http"):
+                            latest_image_url = text
             except Exception as e:
                 print(f"S3 Image API Error: Failed to fetch image: {e}")
 
